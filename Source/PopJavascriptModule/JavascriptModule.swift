@@ -149,16 +149,16 @@ extension JSContext
 
 			//let expandedPath = NSString(string: importpath).expandingTildeInPath
 			//print("Importing \(importPath) from \(context.filename)...")
-			let expandedPath = Bundle.main.url(forResource: importPath, withExtension: "")
-
-			if ( expandedPath == nil )
+			guard let expandedPath = Bundle.main.url(forResource: importPath, withExtension: "") else
 			{
-				throw JavascriptError("File \(expandedPath) not found")
+				throw JavascriptError("File \(importFilename) not found in main bundle")
 			}
 			
-			var fileContent = try String(contentsOf: expandedPath!, encoding:String.Encoding.ascii)
+			var fileContent = try String(contentsOf: expandedPath, encoding:String.Encoding.ascii)
 			fileContent = fileContent.replacingOccurrences(of: "\r\n", with: "\n")
 			
+			//	non ascii chars in JSContext sources fail to load
+			//	to easily detect them, we can convert Swift string to an NSString and look for differences
 			let fileContentNs = fileContent as NSString
 			if ( fileContent.count != fileContentNs.length )
 			{
@@ -174,7 +174,7 @@ extension JSContext
 			//let NewContext = JSContext()!
 			let NewContextExports = try! NewContext.InitModuleSupport()
 			
-			NewContext.evaluateES6Script(fileContent)
+			_ = NewContext.evaluateES6Script(fileContent)
 			if ( NewContext.exception != nil )
 			{
 				throw JavascriptError(NewContext.lastError!)
