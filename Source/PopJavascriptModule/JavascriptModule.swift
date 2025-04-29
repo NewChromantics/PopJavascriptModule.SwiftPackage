@@ -1,6 +1,8 @@
 import JavaScriptCore
 import Combine
 
+
+
 struct JavascriptError : LocalizedError
 {
 	let description: String
@@ -135,23 +137,25 @@ extension JSContext
 			return context.exception.description
 		}
 	}
+
 	
 	//	make a functor (@@convention = obj-c block) to add to the context
-	static let ImportModuleFunctor: @convention(block) (String) -> (JSValue?) =
+	static let ImportModuleFunctor :/* @convention(block) */(String,JavascriptModule) -> (JSValue?) =
 	{
-		importFilename in
+		importFilename, moduleOwner in
 		let context = JSContext.current()!
 		let contextGroup = context.contextGroup
 		
 		do
 		{
-			let importPath = JavascriptModule.ResolveFilePath( filename:importFilename, parentFilename: context.filename )
+			let (importPath,url) = moduleOwner.ResolveFilePath( filename:importFilename, parentFilename: context.filename )
 
 			//let expandedPath = NSString(string: importpath).expandingTildeInPath
 			//print("Importing \(importPath) from \(context.filename)...")
-			guard let expandedPath = Bundle.main.url(forResource: importPath, withExtension: "") else
+			//guard let expandedPath = Bundle.main.url(forResource: importPath, withExtension: "") else
+			guard let expandedPath = url else
 			{
-				throw JavascriptError("File \(importFilename) not found in main bundle")
+				throw JavascriptError("File \(importFilename) not resolved")
 			}
 			
 			var fileContent = try String(contentsOf: expandedPath, encoding:String.Encoding.ascii)
@@ -167,12 +171,12 @@ extension JSContext
 			
 			//	create a new context
 			let NewGlobalContext = JSGlobalContextCreateInGroup(contextGroup, nil)
-			let NewContext = JSContext(jsGlobalContextRef: NewGlobalContext)!
+			let NewContext = JSContext(jsGlobalContextRef: NewGlobalContext!)!
 			//NewContext.name = "\(context.name!) / \(importpath)"
 			NewContext.name = importPath
 
 			//let NewContext = JSContext()!
-			let NewContextExports = try! NewContext.InitModuleSupport()
+			let NewContextExports = try! NewContext.InitModuleSupport(moduleOwner: moduleOwner)
 			
 			_ = NewContext.evaluateES6Script(fileContent)
 			if ( NewContext.exception != nil )
@@ -207,9 +211,8 @@ extension JSContext
 		return nil
 	}
 	
-
 	//	returns exports object, akin to the exported "module" in normal js
-	func InitModuleSupport() throws -> JSValue
+	func InitModuleSupport(moduleOwner:JavascriptModule) throws -> JSValue
 	{
 		let global = context.globalObject!
 		
@@ -229,8 +232,15 @@ extension JSContext
 			throw JavascriptError("Context didn't register global exports symbol \(JavascriptModule.ModuleExportsSymbol)")
 		}
 
+		//	need to capture local variable
+		let ImportModuleFunctorWrapper : @convention(block) (String) -> (JSValue?) =
+		{
+			path in
+			return JSContext.ImportModuleFunctor(path,moduleOwner)
+		}
+		
 		//	register global functors
-		global.setObject( JSContext.ImportModuleFunctor, forKeyedSubscript: JavascriptModule.ImportModuleFunctionSymbol as NSString)
+		global.setObject( ImportModuleFunctorWrapper, forKeyedSubscript: JavascriptModule.ImportModuleFunctionSymbol as NSString)
 		
 		let console = JSValue(newObjectIn: context)
 		console?.setValue( JSContext.consolelogfunctor, forProperty: "log" )
@@ -279,33 +289,39 @@ public class JavascriptModule
 	static public let ImportModuleFunctionSymbol = "__ImportModule"
 	static public let ModuleExportsSymbol = "__exports"
 	
-	var context : JSContext
+	var context : JSContext!
 	var contextGroup : JSContextGroupRef
+	var resolveUrlForImport : (String)->URL?
 
 	//	given ./hello.js in parent Folder/file.js
 	//	we should resolve to Folder/hello.js
-	static func ResolveFilePath(filename:String, parentFilename:String) -> String
+	func ResolveFilePath(filename:String, parentFilename:String) -> (String,URL?)
 	{
 		//	get path out of parent
 		var parentPath = parentFilename.components(separatedBy: "/")
 		//	pop filename from parent
 		parentPath.removeLast()
 		parentPath.append( filename )
-		var filePath = parentPath.joined(separator: "/")
-		return filePath
+		let filePath = parentPath.joined(separator: "/")
+		
+		let url = resolveUrlForImport(filename)
+		
+		return (filePath,url)
 	}
 	
-	public init(_ script:String, moduleName:String) throws
+	public init(_ script:String, moduleName:String,resolveUrlForImport:@escaping (String)->URL?) throws
 	{
+		self.resolveUrlForImport = resolveUrlForImport
+		
 		contextGroup = JSContextGroupCreate()
 		let globalcontext = JSGlobalContextCreateInGroup(contextGroup, nil)
-		context = JSContext(jsGlobalContextRef: globalcontext)
+		context = JSContext(jsGlobalContextRef: globalcontext!)
 		context.name = moduleName
 				
-		try! context.InitModuleSupport()
+		_ = try! context.InitModuleSupport( moduleOwner: self )
 
 		//	load script - always returns undefined
-		let Result = context.evaluateES6Script(script)
+		_ = context.evaluateES6Script(script)
 		
 		if ( context.exception != nil )
 		{
@@ -382,7 +398,7 @@ public class JavascriptModule
 				
 		if #available(macOS 12.0, *)
 		{
-			let Result = await try SwiftFuture.value
+			let Result = try await SwiftFuture.value
 			return Result
 		}
 		else
