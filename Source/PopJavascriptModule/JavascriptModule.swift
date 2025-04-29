@@ -155,7 +155,7 @@ extension JSContext
 			//guard let expandedPath = Bundle.main.url(forResource: importPath, withExtension: "") else
 			guard let expandedPath = url else
 			{
-				throw JavascriptError("File \(importFilename) not resolved")
+				throw JavascriptError("File \(importFilename) not resolved (expanded to \(importPath))")
 			}
 			
 			var fileContent = try String(contentsOf: expandedPath, encoding:String.Encoding.ascii)
@@ -304,7 +304,7 @@ public class JavascriptModule
 		parentPath.append( filename )
 		let filePath = parentPath.joined(separator: "/")
 		
-		let url = resolveUrlForImport(filename)
+		let url = resolveUrlForImport(filePath)
 		
 		return (filePath,url)
 	}
