@@ -291,7 +291,7 @@ public class JavascriptModule
 	
 	var context : JSContext!
 	var contextGroup : JSContextGroupRef
-	var resolveUrlForImport : (String)->URL?
+	var resolveJavascriptImport : (String)->URL?
 
 	//	given ./hello.js in parent Folder/file.js
 	//	we should resolve to Folder/hello.js
@@ -304,14 +304,14 @@ public class JavascriptModule
 		parentPath.append( filename )
 		let filePath = parentPath.joined(separator: "/")
 		
-		let url = resolveUrlForImport(filePath)
+		let url = resolveJavascriptImport(filePath)
 		
 		return (filePath,url)
 	}
 	
-	public init(_ script:String, moduleName:String,resolveUrlForImport:@escaping (String)->URL?) throws
+	public init(_ script:String, moduleName:String,resolveJavascriptImport:@escaping (String)->URL?) throws
 	{
-		self.resolveUrlForImport = resolveUrlForImport
+		self.resolveJavascriptImport = resolveJavascriptImport
 		
 		contextGroup = JSContextGroupCreate()
 		let globalcontext = JSGlobalContextCreateInGroup(contextGroup, nil)
